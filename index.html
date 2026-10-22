@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ATLAS — Video Cue Analyzer</title>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --bg-panel: #0f1520;
+    --bg-panel-raised: #131a27;
+    --line: #1e2836;
+    --line-bright: #2a3749;
+    --text: #dce4ee;
+    --text-dim: #6b7789;
+    --text-dimmer: #414d5e;
+    --accent: #3ddcc7;
+    --accent-dim: #1f7368;
+    --amber: #e8a944;
+    --red: #e8615c;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(61,220,199,0.06), transparent),
+      repeating-linear-gradient(180deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 0 0 80px;
+  }
+
+  .scanline {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0;
+    animation: none;
+    z-index: 50;
+    pointer-events: none;
+  }
+  .scanline.active {
+    opacity: 0.7;
+    animation: sweep 2.2s linear infinite;
+  }
+  @keyframes sweep {
+    0% { top: 0; opacity: 0; }
+    5% { opacity: 0.7; }
+    95% { opacity: 0.7; }
+    100% { top: 100%; opacity: 0; }
+  }
+
+  header {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 48px 24px 28px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  h1 {
+    font-size: 28px;
+    font-weight: 650;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+
+  .sub {
+    color: var(--text-dim);
+    font-size: 14.5px;
+    line-height: 1.6;
+    max-width: 640px;
+  }
+
+  main {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 32px 24px 0;
+  }
+
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+
+  .hint {
+    font-size: 12px;
+    color: var(--text-dimmer);
+    margin-top: 5px;
+    line-height: 1.5;
+  }
+
+  input[type="password"], input[type="text"], select, textarea {
+    width: 100%;
+    background: var(--bg-panel-raised);
+    border: 1px solid var(--line-bright);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--accent-dim);
+  }
+  textarea {
+    font-family: var(--sans);
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 90px;
+  }
+
+  .row { margin-bottom: 18px; }
+  .row:last-child { margin-bottom: 0; }
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 620px) {
+    .two-col { grid-template-columns: 1fr; }
+  }
+
+  .custom-model-row { margin-top: 8px; display: none; }
+  .custom-model-row.show { display: block; }
+
+  .dropzone {
+    border: 1.5px dashed var(--line-bright);
+    border-radius: 8px;
+    padding: 28px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    background: var(--bg-panel-raised);
+  }
+  .dropzone:hover, .dropzone.drag {
+    border-color: var(--accent);
+    background: rgba(61,220,199,0.04);
+  }
+  .dropzone-icon {
+    font-family: var(--mono);
+    font-size: 20px;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .dropzone-text { font-size: 13px; color: var(--text-dim); }
+  .dropzone input[type="file"] { display: none; }
+
+  #fileList { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .file-chip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 9px 12px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+  }
+  .file-chip .fname { color: var(--text); }
+  .file-chip .fsize { color: var(--text-dimmer); margin-left: 8px; }
+  .file-chip .remove {
+    background: none; border: none; color: var(--text-dimmer);
+    cursor: pointer; font-size: 15px; padding: 0 4px; line-height: 1;
+  }
+  .file-chip .remove:hover { color: var(--red); }
+  .file-chip.warn .fsize { color: var(--amber); }
+
+  button.primary {
+    width: 100%;
+    background: var(--accent);
+    color: #06110f;
+    border: none;
+    border-radius: 7px;
+    padding: 13px 18px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: filter 0.15s, transform 0.1s;
+  }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  button.primary:active:not(:disabled) { transform: scale(0.99); }
+  button.primary:disabled {
+    background: var(--line-bright);
+    color: var(--text-dimmer);
+    cursor: not-allowed;
+  }
+
+  #resultsSection { display: none; }
+  #resultsSection.show { display: block; }
+
+  .result-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--line-bright);
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin-bottom: 14px;
+  }
+  .result-card.ok { border-left-color: var(--accent); }
+  .result-card.error { border-left-color: var(--red); }
+  .result-card.pending { border-left-color: var(--amber); }
+
+  .result-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    gap: 12px;
+  }
+  .result-fname {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .result-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dimmer);
+    white-space: nowrap;
+  }
+  .result-delete {
+    background: none;
+    border: 1px solid var(--line-bright);
+    color: var(--text-dimmer);
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+  .result-delete:hover { border-color: var(--red); color: var(--red); }
+  .result-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-right: 8px;
+  }
+  .result-status.ok { background: rgba(61,220,199,0.12); color: var(--accent); }
+  .result-status.error { background: rgba(232,97,92,0.12); color: var(--red); }
+  .result-status.pending { background: rgba(232,169,68,0.12); color: var(--amber); }
+
+  .result-body {
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--text);
+    white-space: pre-wrap;
+  }
+  .result-body.dim { color: var(--text-dim); font-style: italic; }
+  .cue-list {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text);
+  }
+  .cue-list li { margin-bottom: 5px; padding-left: 2px; }
+  .cue-list li::marker { color: var(--accent); }
+
+  .pulse {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--amber);
+    animation: pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+
+  .toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .toolbar-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .btn-ghost {
+    background: none;
+    border: 1px solid var(--line-bright);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .btn-ghost:hover { border-color: var(--accent-dim); color: var(--accent); }
+
+  .footnote {
+    max-width: 880px;
+    margin: 40px auto 0;
+    padding: 0 24px;
+    font-size: 12px;
+    color: var(--text-dimmer);
+    line-height: 1.6;
+  }
+  .footnote strong { color: var(--text-dim); }
+
+  :root { --text-dim:#9ba9bb; --text-dimmer:#8c9aab; }
+  button:focus-visible, .dropzone:focus-visible { outline:2px solid var(--accent); outline-offset:4px; }
+  .result-fname,.fname,.result-body { overflow-wrap:anywhere; min-width:0; }
+  .toolbar,.toolbar > span { flex-wrap:wrap; gap:10px; }
+  .demo-note { color:var(--amber); line-height:1.6; font-size:13px; }
+  @media(max-width:600px) { header,main { padding-left:16px;padding-right:16px; } .panel{padding:18px;} .two-col{grid-template-columns:1fr;} .result-head{flex-wrap:wrap;gap:8px;} .row > div{flex-wrap:wrap;} }
+  @media(prefers-reduced-motion:reduce) { *,*::before,*::after {animation:none!important;transition:none!important;} }
+</style>
+</head>
+<body>
+
+<div class="scanline" id="scanline"></div>
+
+<header>
+  <div class="eyebrow">ATLAS Research Tool</div>
+  <h1>Video Cue Analyzer</h1>
+  <div class="sub">
+    Sends video clips to a video-capable model on OpenRouter and asks for a frame-by-frame
+    read of observable drowning cues — body position, limb movement, breathing, and whether
+    the person makes forward progress. No rescue narrative, just the physical cues.
+  </div>
+</header>
+
+<main>
+  <section class="panel" aria-label="About ATLAS and sample demo">
+    <div class="panel-title">Congressional App Challenge 2026</div>
+    <p>Built from my perspective as a high school student, lifeguard, and drowning-prevention researcher, ATLAS explores how video models can organize visible physical cues for human review.</p>
+    <button class="primary" id="demoBtn">Try Sample Demo</button>
+    <p class="hint">No account or API key needed. Explore illustrative results and try both exports. Live analysis below requires your own OpenRouter API key.</p>
+    <p class="demo-note"><strong>Research prototype:</strong> ATLAS is not a validated drowning-detection or emergency-response system. Outputs may be wrong or miss distress. Never rely on it for swimmer supervision, rescue decisions, or emergency alerts.</p>
+  </section>
+
+  <div class="panel">
+    <div class="panel-title">Connection</div>
+    <div class="row">
+      <label for="apiKey">OpenRouter API key (live analysis only)</label>
+      <input type="password" id="apiKey" placeholder="sk-or-v1-..." autocomplete="off">
+      <div class="hint">Kept in memory for this page load only — never stored, never sent anywhere but openrouter.ai.</div>
+    </div>
+    <div class="row">
+      <label>Analysis mode</label>
+      <div style="display:flex;gap:16px;font-size:13px;">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:400;"><input type="radio" name="mode" value="video" id="modeVideo" checked style="width:auto;"> Native video</label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:400;"><input type="radio" name="mode" value="frames" id="modeFrames" style="width:auto;"> Contact sheet frames</label>
+      </div>
+      <div class="hint">Native video sends the clip; contact sheet mode sends one image of extracted frames. Availability, supported inputs, costs, and account requirements depend on the selected model and provider. Only upload footage you have permission to share with OpenRouter and its providers.</div>
+    </div>
+    <div class="two-col">
+      <div class="row">
+        <label for="modelSelect">Model</label>
+        <select id="modelSelect">
+          <option value="nvidia/nemotron-nano-12b-v2-vl:free" selected>nemotron-nano-12b-v2-vl (free, built for video)</option>
+          <option value="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free">nemotron-3-nano-omni (free, video)</option>
+          <option value="google/gemma-4-31b-it:free">gemma-4-31b (free, video)</option>
+          <option value="google/gemma-4-26b-a4b-it:free">gemma-4-26b (free, video)</option>
+          <option value="google/gemini-3.1-flash-lite">gemini-3.1-flash-lite (paid, video)</option>
+          <option value="google/gemini-2.5-flash">gemini-2.5-flash (paid, video)</option>
+          <option value="__custom__">Custom slug…</option>
+        </select>
+        <div class="custom-model-row" id="customModelRow">
+          <input type="text" id="customModel" placeholder="provider/model-slug">
+        </div>
+      </div>
+      <div class="row">
+        <label for="delayInput">Delay between videos (sec)</label>
+        <input type="text" id="delayInput" value="3">
+        <div class="hint">Free-tier models share a rate-limited pool — spacing requests out helps avoid 429s.</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:16px;" id="frameCountRow">
+      <label for="frameCount">Frames per contact sheet (max 36)</label>
+      <input type="text" id="frameCount" value="16">
+      <div class="hint">Only used in Contact sheet mode. Frames are stitched into one labeled grid image instead of sent as separate images. Larger sheets give more temporal detail but take longer and are more likely to time out on free-tier models.</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Prompt</div>
+    <div class="row">
+      <textarea id="promptInput">You are reviewing footage for a drowning-detection research project (ATLAS). Do not assume the clip contains drowning. Describe only visible evidence, distinguish observation from interpretation, and explicitly state uncertainty. Do not infer breathing or medical status from appearance alone.
+
+Respond ONLY as a concise bulleted list of the most prominent, observable physical cues — at most 6-8 short bullets, each starting with "-". Cover things like: body orientation (vertical vs horizontal), submersion/resurfacing cycles, arm movement (directed stroke vs pressing/slapping the surface vs reaching overhead), head position, facial expression, breathing pattern, and whether the person makes forward progress or stays in place. Do NOT include timestamps — just the cue itself, stated plainly.
+
+No introductory sentences, no summary paragraph, no rescue narrative or storytelling — bullets only, and only cues you can actually observe. If, after looking closely, the footage genuinely does not show drowning distress (e.g. it's clearly staged training footage, an unrelated scene, or too low-resolution/occluded to assess), output exactly one bullet saying so plainly and why — do not invent cues that aren't there.</textarea>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Videos</div>
+    <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Add video files">
+      <div class="dropzone-icon">▶ ⌁</div>
+      <div class="dropzone-text">Drop video files here, or click to browse</div>
+      <input type="file" id="fileInput" accept="video/*" multiple>
+    </div>
+    <div id="fileList"></div>
+  </div>
+
+  <button class="primary" id="analyzeBtn">Run analysis</button>
+
+  <div id="resultsSection" style="margin-top: 28px;">
+    <div class="toolbar">
+      <div class="toolbar-title">Results</div>
+      <span style="display:flex;gap:8px;">
+        <button class="btn-ghost" id="clearAllBtn">Clear all</button>
+        <button class="btn-ghost" id="exportDocBtn">Export Word (.doc)</button>
+        <button class="btn-ghost" id="exportCsvBtn">Export Spreadsheet (.csv)</button>
+      </span>
+    </div>
+    <div id="results"></div>
+  </div>
+
+</main>
+
+<div class="footnote">
+  <strong>Two modes:</strong> Native video sends the actual clip. Contact sheet mode extracts labeled, evenly spaced frames locally and sends one image; it cannot capture motion between frames. Neither mode guarantees accuracy or availability.
+  <br><strong>Codec note:</strong> If your browser cannot decode a clip, try an H.264 MP4 export.
+  <br><strong>Provider note:</strong> Models, pricing, supported modalities, and rate limits can change. A 429 response means the service is rate-limited; wait or select another compatible model.
+</div>
+
+<script>
+const API_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+let queuedFiles = [];
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileListEl = document.getElementById('fileList');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const resultsSection = document.getElementById('resultsSection');
+const resultsEl = document.getElementById('results');
+const scanline = document.getElementById('scanline');
+const modelSelect = document.getElementById('modelSelect');
+const customModelRow = document.getElementById('customModelRow');
+const customModelInput = document.getElementById('customModel');
+const exportDocBtn = document.getElementById('exportDocBtn');
+const exportCsvBtn = document.getElementById('exportCsvBtn');
+const clearAllBtn = document.getElementById('clearAllBtn');
+const modeVideo = document.getElementById('modeVideo');
+const modeFrames = document.getElementById('modeFrames');
+const frameCountRow = document.getElementById('frameCountRow');
+
+function getMode() {
+  return modeVideo.checked ? 'video' : 'frames';
+}
+function updateModeUI() {
+  frameCountRow.style.opacity = getMode() === 'video' ? '0.4' : '1';
+}
+modeVideo.addEventListener('change', updateModeUI);
+modeFrames.addEventListener('change', updateModeUI);
+updateModeUI();
+
+let resultCounter = 0;
+let resultsData = []; // { id, filename, model, frames, status, elapsedSec, cues: [...], rawText }
+
+modelSelect.addEventListener('change', () => {
+  customModelRow.classList.toggle('show', modelSelect.value === '__custom__');
+});
+
+dropzone.addEventListener('click', (e) => { if(e.target !== fileInput) fileInput.click(); });
+dropzone.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  addFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+
+function addFiles(fileListArg) {
+  for (const f of fileListArg) {
+    if (!f.type.startsWith('video/') && !/\.(mp4|mov|webm|m4v|mpeg|mpg|avi)$/i.test(f.name)) { alert('Please choose video files.'); continue; }
+    if (!queuedFiles.some(q => q.name === f.name && q.size === f.size)) {
+      queuedFiles.push(f);
+    }
+  }
+  renderFileList();
+}
+
+function removeFile(idx) {
+  queuedFiles.splice(idx, 1);
+  renderFileList();
+}
+
+function fmtSize(bytes) {
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1 ? mb.toFixed(1) + ' MB' : (bytes / 1024).toFixed(0) + ' KB';
+}
+
+function renderFileList() {
+  fileListEl.innerHTML = '';
+  queuedFiles.forEach((f, idx) => {
+    const warn = f.size > 20 * 1024 * 1024;
+    const chip = document.createElement('div');
+    chip.className = 'file-chip' + (warn ? ' warn' : '');
+    chip.innerHTML = `
+      <span><span class="fname">${escapeHtml(f.name)}</span><span class="fsize">${fmtSize(f.size)}${warn ? ' — large, consider compressing' : ''}</span></span>
+      <button class="remove" aria-label="Remove video" data-idx="${idx}">×</button>
+    `;
+    chip.querySelector('.remove').addEventListener('click', () => removeFile(idx));
+    fileListEl.appendChild(chip);
+  });
+}
+
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// --- Client-side frame extraction (video/canvas, no upload of raw video) ---
+function seekTo(video, t) {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => { clearTimeout(timer); video.removeEventListener('seeked', done); video.removeEventListener('error', fail); };
+    const done = () => { cleanup(); resolve(); };
+    const fail = () => { cleanup(); reject(new Error('Could not decode video frame. Try H.264 MP4.')); };
+    const timer = setTimeout(fail, 20000);
+    video.addEventListener('seeked', done);
+    video.addEventListener('error', fail);
+    video.currentTime = t;
+  });
+}
+
+async function extractFrames(file, numFrames, onProgress) {
+  const url = URL.createObjectURL(file);
+  const video = document.createElement('video');
+  video.src = url;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+
+  try {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Video loading timed out. Try H.264 MP4.')), 20000);
+      video.onloadedmetadata = () => { clearTimeout(timer); resolve(); };
+      video.onerror = () => { clearTimeout(timer); reject(new Error(
+        'Browser could not decode this video (often an HEVC/H.265 .mov — try re-exporting as H.264 .mp4).'
+      )); };
+      if(video.readyState >= 1) { clearTimeout(timer); resolve(); }
+    });
+
+    const duration = video.duration;
+    if (!isFinite(duration) || duration <= 0) {
+      throw new Error('Could not read video duration.');
+    }
+
+    const maxW = 640;
+    const scale = Math.min(1, maxW / video.videoWidth);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    const ctx = canvas.getContext('2d');
+
+    const frames = [];
+    for (let i = 0; i < numFrames; i++) {
+      const t = (duration * (i + 0.5)) / numFrames;
+      await seekTo(video, t);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      frames.push({ t, dataUrl: canvas.toDataURL('image/jpeg', 0.82) });
+      if (onProgress) onProgress(i + 1, numFrames);
+    }
+    return frames;
+  } finally {
+    video.removeAttribute('src'); video.load();
+    URL.revokeObjectURL(url);
+  }
+}
+
+// Stitch extracted frames into a single labeled grid image (like a manual
+// contact sheet) so the whole sequence goes to the model as ONE image_url
+// block instead of many -- avoids per-request image-count limits.
+function buildContactSheet(frames, cols) {
+  cols = cols || Math.min(6, frames.length);
+  const rows = Math.ceil(frames.length / cols);
+
+  return new Promise((resolve, reject) => {
+    // Load all frame images first (they're already data URLs, this is fast/local)
+    const imgs = frames.map(f => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Could not load extracted frame.'));
+      img.src = f.dataUrl;
+      return img;
+    });
+
+    const checkReady = () => {
+      if (imgs.some(img => img.complete && !img.naturalWidth)) { reject(new Error('Invalid extracted frame.')); return; }
+      if (imgs.some(img => !img.complete)) {
+        requestAnimationFrame(checkReady);
+        return;
+      }
+
+      const thumbW = 160;
+      const labelH = 20;
+      const pad = 3;
+      const aspect = imgs[0].naturalHeight / imgs[0].naturalWidth;
+      const thumbH = Math.round(thumbW * aspect);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = cols * (thumbW + pad) + pad;
+      canvas.height = rows * (thumbH + labelH + pad) + pad;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#141414';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.font = 'bold 13px monospace';
+
+      frames.forEach((f, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const x = pad + col * (thumbW + pad);
+        const y = pad + row * (thumbH + labelH + pad);
+        ctx.drawImage(imgs[i], x, y, thumbW, thumbH);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(x, y + thumbH, thumbW, labelH);
+        ctx.fillStyle = '#ffff00';
+        ctx.fillText(`#${i + 1} t=${f.t.toFixed(1)}s`, x + 4, y + thumbH + 15);
+      });
+
+      resolve(canvas.toDataURL('image/jpeg', 0.75));
+    };
+    checkReady();
+  });
+}
+
+function getModel() {
+  return modelSelect.value === '__custom__' ? customModelInput.value.trim() : modelSelect.value;
+}
+
+// Parse model output into clean bullet strings and render as a real <ul>.
+// Strips leading bullet/number markers unconditionally so we never end up
+// with both a CSS bullet AND a leftover "-" from the raw text.
+function parseCues(text) {
+  return text
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean)
+    .map(l => l.replace(/^[-*•–—]+\s*/, '').replace(/^\d+[.)]\s*/, '').trim())
+    .filter(Boolean);
+}
+
+function renderCueList(cardBody, cues) {
+  cardBody.classList.remove('dim');
+  cardBody.innerHTML = '';
+  const ul = document.createElement('ul');
+  ul.className = 'cue-list';
+  cues.forEach(c => {
+    const li = document.createElement('li');
+    li.textContent = c;
+    ul.appendChild(li);
+  });
+  cardBody.appendChild(ul);
+}
+
+async function analyzeOne(file, apiKey, model, prompt, numFrames, cardBody, cardStatus, cardMeta, cardThumbs, record, mode) {
+  const start = Date.now();
+
+  let content;
+
+  if (mode === 'video') {
+    let dataUrl;
+    try {
+      cardBody.textContent = 'Encoding video…';
+      dataUrl = await fileToDataURL(file);
+    } catch (e) {
+      record.status = 'error';
+      record.rawText = 'Could not read file: ' + e.message;
+      setCardError(cardBody, cardStatus, record.rawText);
+      return;
+    }
+    record.frames = 'video';
+
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+    const preview = document.createElement('div');
+    preview.textContent = `📹 ${file.name} (${sizeMB} MB) — sent as native video`;
+    preview.style.cssText = 'font-family:var(--mono);font-size:11px;color:var(--text-dim);';
+    cardThumbs.appendChild(preview);
+
+    cardBody.textContent = 'Sending video (' + sizeMB + ' MB) to model…';
+    content = [
+      { type: 'text', text: prompt },
+      { type: 'video_url', video_url: { url: dataUrl } }
+    ];
+  } else {
+    let frames;
+    try {
+      cardBody.textContent = 'Extracting frames in-browser…';
+      frames = await extractFrames(file, numFrames, (done, total) => {
+        cardBody.textContent = `Extracting frames… ${done}/${total}`;
+      });
+    } catch (e) {
+      record.status = 'error';
+      record.rawText = e.message;
+      setCardError(cardBody, cardStatus, e.message);
+      return;
+    }
+
+    record.frames = frames.length;
+
+    // Show thumbnails so you can see exactly what got sent
+    cardThumbs.innerHTML = '';
+    frames.forEach(f => {
+      const img = document.createElement('img');
+      img.src = f.dataUrl;
+      img.title = 't=' + f.t.toFixed(1) + 's';
+      img.style.cssText = 'height:36px;border-radius:3px;border:1px solid var(--line-bright);';
+      cardThumbs.appendChild(img);
+    });
+
+    cardBody.textContent = 'Building contact sheet…';
+    const sheetDataUrl = await buildContactSheet(frames);
+
+    const sheetPreview = document.createElement('img');
+    sheetPreview.src = sheetDataUrl;
+    sheetPreview.style.cssText = 'max-width:100%;border-radius:6px;border:1px solid var(--line-bright);display:block;margin-top:8px;';
+    cardThumbs.appendChild(sheetPreview);
+
+    cardBody.textContent = 'Sending contact sheet (' + frames.length + ' frames, 1 image) to model…';
+    content = [
+      { type: 'text', text: prompt },
+      { type: 'image_url', image_url: { url: sheetDataUrl } }
+    ];
+  }
+
+  const payload = {
+    model: model,
+    messages: [{ role: 'user', content: content }]
+  };
+
+  try {
+
+
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      signal: AbortSignal.timeout(120000),
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    console.log('[ATLAS] response status:', resp.status, resp.statusText);
+
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+    cardMeta.textContent = elapsed + 's · ' + model;
+    record.elapsedSec = elapsed;
+
+    if (!resp.ok) {
+      let msg = 'HTTP ' + resp.status + ' ' + resp.statusText;
+      try {
+        const errJson = await resp.json();
+        const apiMsg = errJson?.error?.message;
+        const raw = errJson?.error?.metadata?.raw;
+        if (apiMsg) msg = 'HTTP ' + resp.status + ': ' + apiMsg;
+        if (raw) msg += ' — ' + (typeof raw === 'string' ? raw : JSON.stringify(raw));
+        console.log('[ATLAS] full error body:', JSON.stringify(errJson, null, 2));
+      } catch (parseErr) {
+        console.log('[ATLAS] could not parse error body:', parseErr);
+      }
+      record.status = 'error';
+      record.rawText = msg;
+      setCardError(cardBody, cardStatus, msg);
+      return;
+    }
+
+    const json = await resp.json();
+    const responseContent = json?.choices?.[0]?.message?.content;
+    const text = typeof responseContent === 'string' ? responseContent : Array.isArray(responseContent) ? responseContent.map(p => p.text || '').join('\n') : '';
+    if (text) {
+      const cues = parseCues(text);
+      record.status = 'ok';
+      record.rawText = text;
+      record.cues = cues;
+      renderCueList(cardBody, cues);
+      setCardStatus(cardStatus, 'ok', 'Done');
+    } else {
+      record.status = 'error';
+      record.rawText = JSON.stringify(json, null, 2);
+      cardBody.textContent = record.rawText;
+      setCardStatus(cardStatus, 'error', 'No text in response');
+    }
+  } catch (e) {
+    let msg = e.message;
+    if (msg.includes('Failed to fetch')) {
+      msg = 'Network/CORS error reaching OpenRouter directly — check the browser console (F12) for the exact error.';
+    }
+    console.log('[ATLAS] fetch threw:', e);
+    record.status = 'error';
+    record.rawText = msg;
+    setCardError(cardBody, cardStatus, msg);
+  }
+}
+
+function setCardError(cardBody, cardStatus, msg) {
+  cardBody.textContent = msg;
+  cardBody.classList.add('dim');
+  setCardStatus(cardStatus, 'error', 'Error');
+  cardBody.closest('.result-card').classList.add('error');
+  cardBody.closest('.result-card').classList.remove('pending');
+}
+
+function setCardStatus(cardStatus, cls, label) {
+  cardStatus.className = 'result-status ' + cls;
+  cardStatus.textContent = label;
+  const card = cardStatus.closest('.result-card');
+  card.classList.remove('pending', 'error', 'ok');
+  card.classList.add(cls);
+}
+
+analyzeBtn.addEventListener('click', async () => {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const model = getModel();
+  const prompt = document.getElementById('promptInput').value.trim();
+  const delaySec = Math.max(0, Math.min(60, parseFloat(document.getElementById('delayInput').value) || 0));
+
+  if (!apiKey) { alert('Enter your OpenRouter API key first.'); return; }
+  if (!prompt) { alert('Enter an analysis prompt.'); return; }
+  if (!model) { alert('Choose or enter a model.'); return; }
+  if (queuedFiles.length === 0) { alert('Add at least one video file.'); return; }
+
+  analyzeBtn.disabled = true;
+  analyzeBtn.textContent = 'Running…';
+  scanline.classList.add('active');
+  resultsSection.classList.add('show');
+
+  const batch = [...queuedFiles];
+  const batchMode = getMode();
+  try {
+  for (let i = 0; i < batch.length; i++) {
+    const file = batch[i];
+
+    const id = ++resultCounter;
+    const record = { id, filename: file.name, model, frames: 0, status: 'pending', elapsedSec: 0, cues: [], rawText: '' };
+    resultsData.unshift(record);
+
+    const card = document.createElement('div');
+    card.className = 'result-card pending';
+    card.dataset.id = id;
+    card.innerHTML = `
+      <div class="result-head">
+        <span class="result-fname">${escapeHtml(file.name)}</span>
+        <span style="display:flex;align-items:center;gap:10px;">
+          <span class="result-meta"></span>
+          <button class="result-delete" title="Delete this result">×</button>
+        </span>
+      </div>
+      <div><span class="result-status pending"><span class="pulse"></span> Analyzing</span></div>
+      <div class="result-thumbs" style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;"></div>
+      <div class="result-body dim" style="margin-top:8px;">Starting…</div>
+    `;
+    resultsEl.prepend(card);
+
+    card.querySelector('.result-delete').addEventListener('click', () => {
+      card.remove();
+      resultsData = resultsData.filter(r => r.id !== id);
+    });
+
+    const cardMeta = card.querySelector('.result-meta');
+    const cardStatus = card.querySelector('.result-status');
+    const cardBody = card.querySelector('.result-body');
+    const cardThumbs = card.querySelector('.result-thumbs');
+
+    const numFrames = Math.max(1, Math.min(36, parseInt(document.getElementById('frameCount').value) || 24));
+    try { await analyzeOne(file, apiKey, model, prompt, numFrames, cardBody, cardStatus, cardMeta, cardThumbs, record, batchMode); }
+    catch(e) { record.status = 'error'; record.rawText = e.message; setCardError(cardBody, cardStatus, e.message); }
+
+    if (i < batch.length - 1 && delaySec > 0) {
+      await sleep(delaySec * 1000);
+    }
+  }
+
+  } finally {
+  scanline.classList.remove('active');
+  analyzeBtn.disabled = false;
+  analyzeBtn.textContent = 'Run analysis';
+  }
+});
+
+exportCsvBtn.addEventListener('click', () => {
+  if (resultsData.length === 0) return;
+  const rows = [['Filename', 'Status', 'Model', 'Cues', 'Source / limitation']];
+  resultsData.forEach(r => {
+    const cuesJoined = (r.cues && r.cues.length ? r.cues : [r.rawText || '']).join(' | ');
+    rows.push([r.filename, r.status, r.model, cuesJoined, r.demo ? 'ILLUSTRATIVE DEMONSTRATION — not actual AI-generated results' : 'Live model output — unvalidated research prototype']);
+  });
+  const csv = rows.map(row =>
+    row.map(cell => '"' + String(/^[=+@\-\t\r]/.test(String(cell)) ? "'" + cell : cell).replace(/"/g, '""') + '"').join(',')
+  ).join('\r\n');
+  downloadBlob(csv, 'text/csv', 'atlas_video_analysis.csv');
+});
+
+exportDocBtn.addEventListener('click', () => {
+  if (resultsData.length === 0) return;
+
+  const now = new Date().toLocaleString();
+
+  let rowsHtml = '';
+  resultsData.forEach(r => {
+    const cuesHtml = (r.cues && r.cues.length)
+      ? '<ul>' + r.cues.map(c => `<li>${escapeHtml(c)}</li>`).join('') + '</ul>'
+      : `<p style="color:#a33;">${escapeHtml(r.rawText || '(no output)')}</p>`;
+    rowsHtml += `
+      <tr>
+        <td style="padding:8px;border:1px solid #ccc;font-weight:bold;vertical-align:top;">${escapeHtml(r.filename)}</td>
+        <td style="padding:8px;border:1px solid #ccc;vertical-align:top;">${r.demo ? 'ILLUSTRATIVE DEMONSTRATION — not actual AI-generated results' : escapeHtml(r.status)}<br><span style="color:#888;font-size:11px;">${escapeHtml(r.model)}, ${r.frames} frames</span></td>
+        <td style="padding:8px;border:1px solid #ccc;vertical-align:top;">${cuesHtml}</td>
+      </tr>`;
+  });
+
+  const html = `
+    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head><meta charset="utf-8"><title>ATLAS Video Cue Analysis</title></head>
+    <body style="font-family:Calibri,Arial,sans-serif;">
+      <h1>ATLAS Video Cue Analysis</h1>
+      <p style="color:#888;">Generated ${now}</p>
+      <p>Research prototype. Not validated for drowning detection or emergency response. Sample results are illustrative, not actual AI-generated results.</p><h2>Results</h2>
+      <table style="border-collapse:collapse;width:100%;">
+        <tr style="background:#1f4e79;color:#fff;">
+          <th style="padding:8px;border:1px solid #ccc;">File</th>
+          <th style="padding:8px;border:1px solid #ccc;">Status</th>
+          <th style="padding:8px;border:1px solid #ccc;">Cues</th>
+        </tr>
+        ${rowsHtml}
+      </table>
+    </body>
+    </html>`;
+
+  downloadBlob(html, 'application/msword', 'atlas_video_analysis.doc');
+});
+
+function downloadBlob(content, mime, filename) {
+  const blob = new Blob([content], { type: mime });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+clearAllBtn.addEventListener('click', () => {
+  if (resultsEl.children.length === 0) return;
+  if (confirm('Delete all results? This cannot be undone.')) {
+    resultsEl.innerHTML = '';
+    resultsData = [];
+  }
+});
+
+document.getElementById('demoBtn').addEventListener('click', () => {
+  const existing = resultsData.find(r => r.demo);
+  if(existing) { document.querySelector(`[data-id="${existing.id}"]`).scrollIntoView({block:'center'}); return; }
+  const id = ++resultCounter;
+  const cues = [
+    'Body orientation: In this fictional example, the swimmer remains mostly upright rather than horizontal.',
+    'Head position: The mouth is depicted near the waterline; the head tilts back briefly.',
+    'Arm movement: Arms press outward and downward without a coordinated forward stroke.',
+    'Surface pattern: The head repeatedly dips below and returns above the surface.',
+    'Forward progress: Little displacement is described relative to a fixed poolside marker.',
+    'Interpretation and uncertainty: These example cues can be associated with distress, but do not establish drowning. Breathing, intent, and medical status cannot be confirmed.'
+  ];
+  const record = {id, filename:'ILLUSTRATIVE SAMPLE — pool_observation_example.mp4', model:'Scripted demonstration (no model called)', frames:16, status:'sample', elapsedSec:0, cues, rawText:cues.join('\n'), demo:true};
+  resultsData.unshift(record);
+  const card = document.createElement('div'); card.className='result-card ok'; card.dataset.id=id;
+  card.innerHTML='<div class="result-head"><span class="result-fname">Illustrative sample: pool observation</span><button class="btn-ghost" aria-label="Delete sample result">×</button></div><p class="demo-note"><strong>ILLUSTRATIVE DEMONSTRATION — not actual AI-generated results.</strong> No video was uploaded or analyzed; no API request was made.</p><p>Example video information: fictional 12-second pool clip · 1280 × 720 · 16 evenly spaced sample frames. This describes an example workflow; it is not real incident footage.</p><p class="hint">Workflow: select videos → choose native video or contact-sheet extraction → review structured cues → export Word or CSV. For this demo, the result below is prewritten.</p><div class="result-body"></div>';
+  renderCueList(card.querySelector('.result-body'),cues);
+  card.querySelector('button').addEventListener('click',()=>{card.remove();resultsData=resultsData.filter(r=>r.id!==id);});
+  resultsEl.prepend(card); resultsSection.classList.add('show'); card.scrollIntoView({block:'start'});
+});
+</script>
+
+</body>
+</html>
